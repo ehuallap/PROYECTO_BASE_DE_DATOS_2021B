@@ -184,6 +184,36 @@ END;
 DELIMITER ;
 
 DELIMITER //
+DROP FUNCTION IF EXISTS extraer_dni_cliente//
+CREATE FUNCTION extraer_dni_cliente(nombre_cliente VARCHAR(20), pri_apellido_cliente VARCHAR(20), seg_apellido_cliente VARCHAR(20)) RETURNS INTEGER DETERMINISTIC
+BEGIN
+	DECLARE codigo INTEGER;
+    SET codigo = (SELECT DNI FROM usuario WHERE nombre = nombre_cliente AND pri_apellido = pri_apellido_cliente AND seg_apellido = seg_apellido_cliente);
+    IF codigo IS NULL THEN
+		RETURN -1;
+	ELSE
+		RETURN codigo;
+	END IF;
+END;
+//
+DELIMITER ;
+
+DELIMITER //
+DROP FUNCTION IF EXISTS extraer_codigo_empleado//
+CREATE FUNCTION extraer_codigo_empleado(nombre_empleado VARCHAR(20), pri_apellido_empleado VARCHAR(20), seg_apellido_empleado VARCHAR(20)) RETURNS INTEGER DETERMINISTIC
+BEGIN
+	DECLARE codigo INTEGER;
+    SET codigo = (SELECT DNI FROM usuario WHERE nombre = nombre_empleado AND pri_apellido = pri_apellido_empleado AND seg_apellido = seg_apellido_empleado);
+    IF codigo IS NULL THEN
+		RETURN -1;
+	ELSE
+		RETURN codigo;
+	END IF;
+END;
+//
+DELIMITER ;
+
+DELIMITER //
 DROP PROCEDURE IF EXISTS insert_lavadora//
 CREATE PROCEDURE insert_lavadora(IN precio_lavadora INTEGER, IN nombre_proveedor VARCHAR(20), IN peso_lavadora FLOAT, IN color_lavadora VARCHAR(15), IN nombre_tienda VARCHAR(20), IN stock_lavadora INTEGER)
 BEGIN
@@ -224,6 +254,81 @@ END;
 //
 DELIMITER ;
 
+DELIMITER //
+DROP PROCEDURE IF EXISTS insert_venta//
+CREATE PROCEDURE insert_venta(IN nombre_cliente VARCHAR(20), IN pri_apellido_cliente VARCHAR(20), IN seg_apellido_cliente VARCHAR(20),
+								IN nombre_empleado VARCHAR(20), IN pri_apellido_empleado VARCHAR(20), IN seg_apellido_empleado VARCHAR(20),
+                                IN fecha_venta DATE, IN nombre_tienda_venta VARCHAR(20), IN codigo_lavadora VARCHAR(20), IN cantidad_lavadora INTEGER)
+BEGIN
+	DECLARE dni_cliente INTEGER;
+    DECLARE codigo_empleado INTEGER;
+    DECLARE id_tienda INTEGER;
+    DECLARE last_id_venta INTEGER;
+    DECLARE suma_total FLOAT;
+    SET suma_total = ((SELECT precio FROM lavadora WHERE id_lavadora = codigo_lavadora) * cantidad_lavadora);
+	START TRANSACTION;
+		SET dni_cliente = (SELECT(extraer_dni_cliente(nombre_cliente, pri_apellido_cliente, seg_apellido_cliente)));
+        SET codigo_empleado = (SELECT(extraer_codigo_empleado(nombre_empleado, pri_apellido_empleado, seg_apellido_empleado)));
+        SET id_tienda = (SELECT(extraer_id_tienda(nombre_tienda_venta)));
+        
+        IF dni_cliente = -1 AND codigo_empleado = -1 THEN
+			SIGNAL SQLSTATE '45000'
+			SET MESSAGE_TEXT = 'Ni Cliente ni Empleado encontrado';
+            ROLLBACK;
+		END IF;
+        IF dni_cliente = -1 OR codigo_empleado = -1 THEN
+            IF dni_cliente = -1 THEN
+				SIGNAL SQLSTATE '45000'
+				SET MESSAGE_TEXT = 'Cliente no encontrado';
+			END IF;
+            IF codigo_empleado = -1 THEN
+				SIGNAL SQLSTATE '45000'
+				SET MESSAGE_TEXT = 'Empleado no encontrado';
+			END IF;
+			ROLLBACK;
+        END IF;
+        
+		INSERT INTO venta (DNI_CLIENTE, id_empleado, id_tienda, fecha, sum_total) VALUES
+			(dni_cliente, codigo_empleado, id_tienda, fecha_venta, suma_total);
+        SET last_id_venta = (SELECT MAX(id_venta) FROM venta);
+        
+		INSERT INTO venta_lavad VALUES
+			(last_id_venta, codigo_lavadora, cantidad_lavadora);
+	COMMIT;
+END;
+//
+DELIMITER ;
+
+DELIMITER //
+DROP PROCEDURE IF EXISTS insert_cliente//
+CREATE PROCEDURE insert_cliente(IN dni_cliente INTEGER, IN nombre_cliente VARCHAR(20), IN pri_apellido_cliente VARCHAR(20), IN seg_apellido_cliente VARCHAR(20), IN telefono_cliente INTEGER)
+BEGIN    
+	START TRANSACTION;        
+		INSERT INTO usuario VALUES
+			(dni_cliente, nombre_cliente, pri_apellido_cliente, seg_apellido_cliente);
+        
+		INSERT INTO cliente VALUES
+			(dni_cliente, telefono_cliente);
+	COMMIT;
+END;
+//
+DELIMITER ;
+
+DELIMITER //
+DROP PROCEDURE IF EXISTS insert_empleado//
+CREATE PROCEDURE insert_empleado(IN dni_empleado INTEGER, IN nombre_empleado VARCHAR(20), IN pri_apellido_empleado VARCHAR(20), IN seg_apellido_empleado VARCHAR(20), IN turno_empleado VARCHAR(20))
+BEGIN    
+	START TRANSACTION;        
+		INSERT INTO usuario VALUES
+			(dni_empleado, nombre_empleado, pri_apellido_empleado, seg_apellido_empleado);
+        
+		INSERT INTO empleado VALUES
+			(dni_empleado, turno_empleado);
+	COMMIT;
+END;
+//
+DELIMITER ;
+
 /*
 PARAMETROS DE ENTRADA:
 	precio_lavadora
@@ -234,3 +339,17 @@ PARAMETROS DE ENTRADA:
 	stock_lavadora
 */
 /*CALL insert_lavadora(800, "MABE", 200.25, "Marron", "Chispley", 150);*/
+/*
+nombre_cliente,
+pri_apellido_cliente,
+seg_apellido_cliente,
+nombre_empleado,
+pri_apellido_empleado,
+seg_apellido_empleado,
+fecha_venta,
+nombre_tienda,
+codigo_lavadora,
+cantidad_lavadora
+*/
+/*CALL insert_venta('Diana', 'Vilca', 'Mendoza', 'Guiomar', 'Diaz', 'Laguna', '2021-12-20', 'Chispley', '114', 2);*/
+/*CALL insert_empleado(564987123, "Erick", "Hualla", "Puelles", "Tarde");*/
